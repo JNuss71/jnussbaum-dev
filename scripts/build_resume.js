@@ -8,14 +8,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
-const mdPath = path.join(projectRoot, 'public', 'resume.md');
-const pdfPath = path.join(projectRoot, 'public', 'resume.pdf');
+const inputArg = process.argv[2];
+const outputArg = process.argv[3];
+
+const mdPath = inputArg ? path.resolve(inputArg) : path.join(projectRoot, 'public', 'resume.md');
+const pdfPath = outputArg 
+  ? path.resolve(outputArg) 
+  : (inputArg ? path.resolve(inputArg).replace(/\.md$/, '.pdf') : path.join(projectRoot, 'public', 'resume.pdf'));
+
 const tempHtmlPath = path.join(os.tmpdir(), `resume_build_${Date.now()}.html`);
 
 if (!fs.existsSync(mdPath)) {
   console.error(`Markdown resume not found at: ${mdPath}`);
   process.exit(1);
 }
+
+fs.mkdirSync(path.dirname(pdfPath), { recursive: true });
 
 const mdContent = fs.readFileSync(mdPath, 'utf-8');
 

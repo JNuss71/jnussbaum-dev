@@ -1,6 +1,6 @@
 # Jared Nussbaum
 **Senior DevOps Engineer**  
-Boston, MA • [hi@jnussbaum.dev](mailto:hi@jnussbaum.dev) • [jnussbaum.dev](https://jnussbaum.dev) • [github.com/JNuss71](https://github.com/JNuss71)
+Boston, MA • [hi@jaredn.dev](mailto:hi@jaredn.dev) • [jaredn.dev](https://jaredn.dev) • [github.com/JNuss71](https://github.com/JNuss71)
 
 ---
 
@@ -13,7 +13,7 @@ Senior DevOps Engineer with 5+ years of experience architecting multi-account AW
 
 ### **Senior DevOps Engineer** | Federal Reserve Bank of Boston
 *June 2021 - Present • Boston, MA*
-* **Cloud Platform Architecture:** Architected and built an AWS Data Platform using Terraform and Ansible, managing Apache Airflow data pipelines, DataHub cataloging, automated CI/CD releases, and dynamic Okta-governed IAM access controls across all 12 Federal Reserve research districts.
+* **AWS Data Platform:** Architected and built an AWS Data Platform using Terraform and Ansible, managing Apache Airflow data pipelines, DataHub cataloging, automated CI/CD releases, and dynamic Okta-governed IAM access controls across all 12 Federal Reserve research districts.
 * **AI FinOps & Cloud Observability:** Engineered an AWS Bedrock cost observability dashboard utilizing AWS Cost and Usage Reports (CUR 2.0) and Streamlit deployed on Amazon ECS, delivering daily telemetry on per-user, per-model, and per-token-type LLM consumption and spend.
 * **Authentication Tooling:** Developed an enterprise Okta authentication client utilizing AI agent workflows to enable seamless, secure AWS role assumption via ADFS, Entra ID, and Okta Authentication supporting both Classic and OIE identity architectures.
 * **Cross-Language Data CLI:** Engineered a cross-language Athena data retrieval CLI, packaging custom Python, R, Julia, Stata, and MATLAB FFI wrappers for automated AWS credential negotiation and native DataFrame ingestion.

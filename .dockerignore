@@ -1,0 +1,23 @@
+# Git & local config
+.git
+.gitignore
+*.local
+
+# Dependencies & build outputs
+node_modules
+dist
+dist-ssr
+
+# Logs
+logs
+*.log
+
+# Scratch space & custom resumes
+scratch/
+resumes/
+custom_resumes/
+
+# IDE / Editor files
+.vscode
+.idea
+.DS_Store

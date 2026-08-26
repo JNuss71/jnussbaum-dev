@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch space & custom resumes
+scratch/
+resumes/
+custom_resumes/
+
