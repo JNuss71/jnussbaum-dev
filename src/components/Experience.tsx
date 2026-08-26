@@ -34,7 +34,7 @@ export const Experience: React.FC = () => {
               <li className="flex items-start gap-2.5">
                 <span className="text-zinc-600 select-none mt-1 text-xs">▸</span>
                 <span>
-                  <strong className="text-zinc-200 font-medium">Multi-Account AWS Data Platform:</strong> Architect and deploy Terraform and Ansible pipelines managing Apache Airflow data pipelines, DataHub cataloging, automated CI/CD releases, and dynamic Okta-governed IAM access controls across all 12 Federal Reserve research districts.
+                  <strong className="text-zinc-200 font-medium">AWS Data Platform:</strong> Architect and deploy Terraform and Ansible pipelines managing Apache Airflow data pipelines, DataHub cataloging, automated CI/CD releases, and dynamic Okta-governed IAM access controls across all 12 Federal Reserve research districts.
                 </span>
               </li>
               <li className="flex items-start gap-2.5">
