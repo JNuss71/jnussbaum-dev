@@ -90,10 +90,10 @@ export const SkillsEducation: React.FC = () => {
                 Boston Marathon (2025): <strong className="text-zinc-100">2:41:43</strong>
               </span>
               <span className="text-xs font-mono px-2.5 py-1 rounded bg-zinc-900/90 border border-zinc-800 text-zinc-300">
-                12 Hours of Lawrence Woods: <strong className="text-zinc-100">58.5 Miles (1st Place)</strong>
+                12 Hours of Lawrence Woods (2025): <strong className="text-zinc-100">58.5 Miles (1st Place)</strong>
               </span>
               <span className="text-xs font-mono px-2.5 py-1 rounded bg-zinc-900/90 border border-zinc-800 text-zinc-300">
-                Tucson Half Marathon: <strong className="text-zinc-100">1:15:00</strong>
+                Tucson Half Marathon (2025): <strong className="text-zinc-100">1:15:00</strong>
               </span>
             </div>
           </div>
