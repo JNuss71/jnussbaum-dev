@@ -11,7 +11,7 @@ export const Header: React.FC = () => {
           <span className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700/80 flex items-center justify-center text-xs text-white">
             JN
           </span>
-          <span className="text-zinc-400 font-normal">jnussbaum.dev</span>
+          <span className="text-zinc-400 font-normal">jaredn.dev</span>
         </a>
 
         <nav className="flex items-center gap-4 sm:gap-5 text-sm text-zinc-400">
@@ -45,7 +45,7 @@ export const Header: React.FC = () => {
             GitHub
           </a>
           <a 
-            href="mailto:hi@jnussbaum.dev"
+            href="mailto:hi@jaredn.dev"
             className="hover:text-zinc-200 transition-colors"
           >
             Contact

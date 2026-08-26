@@ -53,11 +53,11 @@ export const Hero: React.FC = () => {
           </a>
           <span className="text-zinc-700">/</span>
           <a
-            href="mailto:hi@jnussbaum.dev"
+            href="mailto:hi@jaredn.dev"
             className="inline-flex items-center gap-1.5 text-zinc-300 hover:text-white transition-colors"
           >
             <MailIcon size={14} />
-            <span>hi@jnussbaum.dev</span>
+            <span>hi@jaredn.dev</span>
           </a>
         </div>
       </div>

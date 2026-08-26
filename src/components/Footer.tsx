@@ -29,7 +29,7 @@ export const Footer: React.FC = () => {
           </a>
           <span className="text-zinc-800">•</span>
           <a
-            href="mailto:hi@jnussbaum.dev"
+            href="mailto:hi@jaredn.dev"
             className="hover:text-zinc-200 transition-colors"
           >
             Email
