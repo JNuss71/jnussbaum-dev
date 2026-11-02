@@ -28,3 +28,6 @@ scratch/
 resumes/
 custom_resumes/
 
+
+# Photo originals (processed output goes to public/photos)
+photos-src/

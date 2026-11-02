@@ -21,3 +21,6 @@ custom_resumes/
 .vscode
 .idea
 .DS_Store
+
+# Photo originals
+photos-src/
