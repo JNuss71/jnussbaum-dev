@@ -16,6 +16,17 @@ export interface Photo {
   caption?: string;
 }
 
+/** One chapter of the diary: some writing followed by its photos. */
+export interface Section {
+  /** Small mono line above the title, e.g. "Day 3 · Aug 14". */
+  label?: string;
+  title?: string;
+  /** Paragraphs. */
+  text: string[];
+  /** `index` is the photo's position in Trip.photos (used by the lightbox). */
+  photos: { photo: Photo; index: number }[];
+}
+
 export interface Trip {
   slug: string;
   title: string;
@@ -25,7 +36,19 @@ export interface Trip {
   blurb?: string;
   /** Base file name of the cover photo. Defaults to the first photo. */
   cover?: string;
+  /** Every photo, in diary order. The lightbox steps through this list. */
   photos: Photo[];
+  sections: Section[];
+}
+
+interface EntryMeta {
+  /** e.g. "Day 3 · Aug 14" */
+  label?: string;
+  title?: string;
+  /** One paragraph, or an array of paragraphs. */
+  text?: string | string[];
+  /** Base file names (no extension) shown under this entry, in order. */
+  photos: string[];
 }
 
 interface TripMeta {
@@ -38,6 +61,12 @@ interface TripMeta {
   cover?: string;
   /** Optional captions keyed by base file name. */
   captions?: Record<string, string>;
+  /**
+   * Optional photo diary. Photos not mentioned in any entry are appended in a
+   * final "More" section, so nothing is dropped by accident. Leave this out
+   * for a plain grid.
+   */
+  entries?: EntryMeta[];
 }
 
 /**
@@ -53,26 +82,68 @@ interface TripMeta {
  *     blurb: 'Ten days around the Ring Road.',
  *     cover: 'DSC01234',
  *     captions: { DSC01234: 'Seljalandsfoss at 6am' },
+ *     entries: [
+ *       {
+ *         label: 'Day 1 · Aug 3',
+ *         title: 'Landing in Keflavík',
+ *         text: ['First paragraph.', 'Second paragraph.'],
+ *         photos: ['DSC01234', 'DSC01240'],
+ *       },
+ *     ],
  *   },
  */
 const tripMeta: TripMeta[] = [];
 
 type Manifest = Record<string, Omit<Photo, 'caption'>[]>;
 
-export const trips: Trip[] = tripMeta
-  .map((meta): Trip => {
-    const files = (manifest as Manifest)[meta.slug] ?? [];
-    return {
-      slug: meta.slug,
-      title: meta.title,
-      location: meta.location,
-      date: meta.date,
-      blurb: meta.blurb,
-      cover: meta.cover,
-      photos: files.map((p) => ({ ...p, caption: meta.captions?.[p.file] })),
-    };
-  })
-  .filter((t) => t.photos.length > 0);
+function buildTrip(meta: TripMeta): Trip {
+  const files = (manifest as Manifest)[meta.slug] ?? [];
+  const byFile = new Map<string, Photo>(
+    files.map((p) => [p.file, { ...p, caption: meta.captions?.[p.file] }]),
+  );
+
+  const photos: Photo[] = [];
+  const used = new Set<string>();
+
+  /** Resolves file names to photos, skipping unknown or already-used ones. */
+  const take = (names: string[]) =>
+    names.flatMap((name) => {
+      const photo = byFile.get(name);
+      if (!photo) {
+        if (import.meta.env.DEV) console.warn(`[trips] ${meta.slug}: no photo named "${name}"`);
+        return [];
+      }
+      if (used.has(name)) return [];
+      used.add(name);
+      photos.push(photo);
+      return [{ photo, index: photos.length - 1 }];
+    });
+
+  const sections: Section[] = (meta.entries ?? []).map((entry) => ({
+    label: entry.label,
+    title: entry.title,
+    text: entry.text === undefined ? [] : [entry.text].flat(),
+    photos: take(entry.photos),
+  }));
+
+  const rest = take(files.map((p) => p.file));
+  if (rest.length > 0) {
+    sections.push({ title: sections.length > 0 ? 'More' : undefined, text: [], photos: rest });
+  }
+
+  return {
+    slug: meta.slug,
+    title: meta.title,
+    location: meta.location,
+    date: meta.date,
+    blurb: meta.blurb,
+    cover: meta.cover,
+    photos,
+    sections,
+  };
+}
+
+export const trips: Trip[] = tripMeta.map(buildTrip).filter((t) => t.photos.length > 0);
 
 export function coverOf(trip: Trip): Photo {
   return trip.photos.find((p) => p.file === trip.cover) ?? trip.photos[0];
