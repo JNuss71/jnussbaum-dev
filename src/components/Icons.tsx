@@ -135,3 +135,29 @@ export const AwardIcon: React.FC<IconProps> = (props) => (
     <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11" />
   </IconBase>
 );
+
+export const XIcon: React.FC<IconProps> = (props) => (
+  <IconBase {...props}>
+    <path d="M18 6 6 18" />
+    <path d="m6 6 12 12" />
+  </IconBase>
+);
+
+export const ChevronLeftIcon: React.FC<IconProps> = (props) => (
+  <IconBase {...props}>
+    <path d="m15 18-6-6 6-6" />
+  </IconBase>
+);
+
+export const ChevronRightIcon: React.FC<IconProps> = (props) => (
+  <IconBase {...props}>
+    <path d="m9 18 6-6-6-6" />
+  </IconBase>
+);
+
+export const ArrowLeftIcon: React.FC<IconProps> = (props) => (
+  <IconBase {...props}>
+    <path d="m12 19-7-7 7-7" />
+    <path d="M19 12H5" />
+  </IconBase>
+);
