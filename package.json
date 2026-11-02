@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "build:resume": "node scripts/build_resume.js",
     "build:photos": "node scripts/build_photos.js",
+    "curate:photos": "node scripts/curate_photos.js",
     "lint": "oxlint",
     "preview": "vite preview"
   },

@@ -14,6 +14,8 @@ export interface Photo {
   height: number;
   widths: number[];
   caption?: string;
+  /** Description for screen readers. Falls back to the caption. */
+  alt?: string;
 }
 
 /** One chapter of the diary: some writing followed by its photos. */
@@ -51,16 +53,24 @@ interface EntryMeta {
   photos: string[];
 }
 
-interface TripMeta {
-  /** Must match the folder name in photos-src/ */
-  slug: string;
+/** Shape of a src/data/trips/<slug>.json file. See that folder's README. */
+export interface TripMeta {
   title: string;
   location: string;
+  /** Shown as-is, e.g. "Aug 2025". */
   date: string;
+  /** ISO date (YYYY-MM-DD) used only to sort trips, newest first. */
+  start?: string;
+  /** Drafts are visible in `pnpm dev` but left out of production builds. */
+  draft?: boolean;
   blurb?: string;
   cover?: string;
-  /** Optional captions keyed by base file name. */
+  /** Captions keyed by base file name. */
   captions?: Record<string, string>;
+  /** Alt text keyed by base file name. */
+  alt?: Record<string, string>;
+  /** Base file names that are never processed or published. */
+  exclude?: string[];
   /**
    * Optional photo diary. Photos not mentioned in any entry are appended in a
    * final "More" section, so nothing is dropped by accident. Leave this out
@@ -69,37 +79,24 @@ interface TripMeta {
   entries?: EntryMeta[];
 }
 
-/**
- * Hand-edited trip details, newest first.
- * A trip only appears on the site once photos-src/<slug>/ has been processed
- * with `pnpm build:photos`. Example:
- *
- *   {
- *     slug: 'iceland',
- *     title: 'Iceland',
- *     location: 'Ring Road, Iceland',
- *     date: 'Aug 2025',
- *     blurb: 'Ten days around the Ring Road.',
- *     cover: 'DSC01234',
- *     captions: { DSC01234: 'Seljalandsfoss at 6am' },
- *     entries: [
- *       {
- *         label: 'Day 1 · Aug 3',
- *         title: 'Landing in Keflavík',
- *         text: ['First paragraph.', 'Second paragraph.'],
- *         photos: ['DSC01234', 'DSC01240'],
- *       },
- *     ],
- *   },
- */
-const tripMeta: TripMeta[] = [];
+type TripFile = TripMeta & { slug: string };
 
-type Manifest = Record<string, Omit<Photo, 'caption'>[]>;
+// One JSON file per trip. The file name is the slug and must match the folder
+// name in photos-src/.
+const tripFiles = import.meta.glob<TripMeta>('./trips/*.json', { eager: true, import: 'default' });
 
-function buildTrip(meta: TripMeta): Trip {
-  const files = (manifest as Manifest)[meta.slug] ?? [];
+const tripMeta: TripFile[] = Object.entries(tripFiles)
+  .map(([path, meta]) => ({ ...meta, slug: path.replace(/^.*\/(.+)\.json$/, '$1') }))
+  .filter((meta) => import.meta.env.DEV || !meta.draft)
+  .sort((a, b) => (b.start ?? '').localeCompare(a.start ?? '') || a.slug.localeCompare(b.slug));
+
+type Manifest = Record<string, Omit<Photo, 'caption' | 'alt'>[]>;
+
+function buildTrip(meta: TripFile): Trip {
+  const excluded = new Set(meta.exclude ?? []);
+  const files = ((manifest as Manifest)[meta.slug] ?? []).filter((p) => !excluded.has(p.file));
   const byFile = new Map<string, Photo>(
-    files.map((p) => [p.file, { ...p, caption: meta.captions?.[p.file] }]),
+    files.map((p) => [p.file, { ...p, caption: meta.captions?.[p.file], alt: meta.alt?.[p.file] }]),
   );
 
   const photos: Photo[] = [];
@@ -110,7 +107,9 @@ function buildTrip(meta: TripMeta): Trip {
     names.flatMap((name) => {
       const photo = byFile.get(name);
       if (!photo) {
-        if (import.meta.env.DEV) console.warn(`[trips] ${meta.slug}: no photo named "${name}"`);
+        if (import.meta.env.DEV && !excluded.has(name)) {
+          console.warn(`[trips] ${meta.slug}: no photo named "${name}"`);
+        }
         return [];
       }
       if (used.has(name)) return [];
@@ -147,6 +146,11 @@ export const trips: Trip[] = tripMeta.map(buildTrip).filter((t) => t.photos.leng
 
 export function coverOf(trip: Trip): Photo {
   return trip.photos.find((p) => p.file === trip.cover) ?? trip.photos[0];
+}
+
+/** Text for screen readers: explicit alt text, else the caption, else a generic label. */
+export function photoAlt(trip: Trip, photo: Photo, index: number): string {
+  return photo.alt ?? photo.caption ?? `${trip.title}, photo ${index + 1}`;
 }
 
 export function photoSrc(trip: Trip, photo: Photo, width: number): string {

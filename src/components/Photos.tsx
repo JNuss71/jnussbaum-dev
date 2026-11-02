@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { coverOf, photoFallback, photoSrcSet, trips } from '../data/trips';
+import { coverOf, photoAlt, photoFallback, photoSrcSet, trips } from '../data/trips';
 import type { Section, Trip } from '../data/trips';
 import { ArrowLeftIcon } from './Icons';
 import { Lightbox } from './Lightbox';
@@ -93,7 +93,7 @@ const PhotoGrid: React.FC<{
           sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
           width={photo.width}
           height={photo.height}
-          alt={photo.caption ?? `${trip.title}, photo ${index + 1}`}
+          alt={photoAlt(trip, photo, index)}
           loading={index < 3 ? 'eager' : 'lazy'}
           decoding="async"
           className="w-full h-full object-cover"

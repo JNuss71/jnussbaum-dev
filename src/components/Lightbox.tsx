@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { photoFallback, photoSrcSet } from '../data/trips';
+import { photoAlt, photoFallback, photoSrcSet } from '../data/trips';
 import type { Trip } from '../data/trips';
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from './Icons';
 
@@ -110,7 +110,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ trip, index, onIndexChange, 
           sizes="100vw"
           width={photo.width}
           height={photo.height}
-          alt={photo.caption ?? `${trip.title}, photo ${index + 1}`}
+          alt={photoAlt(trip, photo, index)}
           className="max-w-full max-h-full w-auto h-auto object-contain select-none"
           draggable={false}
         />
