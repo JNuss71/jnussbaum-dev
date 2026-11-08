@@ -126,7 +126,7 @@ function parseMarkdownResume(md) {
         const raw = line.replace('### ', '').trim();
         const titleMatch = raw.match(/\*\*(.*?)\*\*/);
         const pTitle = titleMatch ? titleMatch[1] : raw;
-        const linkMatch = raw.match(/\((https?:\/\/[^\s\)]+)\)/);
+        const linkMatch = raw.match(/\((https?:\/\/[^\s)]+)\)/);
         const pLink = linkMatch ? linkMatch[1] : '';
         const displayLinkMatch = raw.match(/\[(.*?)\]/);
         const pDisplayLink = displayLinkMatch ? displayLinkMatch[1] : pLink;
@@ -194,8 +194,8 @@ function parseMarkdownResume(md) {
 const parsed = parseMarkdownResume(mdContent);
 
 let contactHtml = parsed.contact
-  .replace(/\[(.*?)\]\((mailto:[^\s\)]+)\)/g, '<a href="$2">$1</a>')
-  .replace(/\[(.*?)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2">$1</a>')
+  .replace(/\[(.*?)\]\((mailto:[^\s)]+)\)/g, '<a href="$2">$1</a>')
+  .replace(/\[(.*?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>')
   .replace(/•/g, '<span>•</span>');
 
 function formatBullets(text) {

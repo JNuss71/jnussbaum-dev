@@ -7,6 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:resume": "node scripts/build_resume.js",
+    "build:photos": "node scripts/build_photos.js",
+    "sync:photos": "node scripts/sync_r2_runner.mjs",
+    "test:viewer": "node scripts/serve_test_viewer.mjs",
+    "curate:photos": "node scripts/curate_photos.js",
+    "rank:photos": "node scripts/rank_photos.js",
     "lint": "oxlint",
     "preview": "vite preview"
   },
@@ -23,6 +28,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
     "oxlint": "^1.79.0",
+    "sharp": "^0.35.5",
     "typescript": "~6.0.2",
     "vite": "^8.2.2"
   }
