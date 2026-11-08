@@ -10,7 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-*.local
+# Environment files
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -28,6 +31,11 @@ scratch/
 resumes/
 custom_resumes/
 
-
-# Photo originals (processed output goes to public/photos)
+# Photo originals and processed outputs (hosted on Cloudflare R2)
 photos-src/
+public/photos/
+
+# Python venv, caches & private C2PA signing keys
+.venv/
+.cache/
+keys/

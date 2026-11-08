@@ -16,6 +16,8 @@ export interface Photo {
   caption?: string;
   /** Description for screen readers. Falls back to the caption. */
   alt?: string;
+  /** Curation score badge (shown in dev mode). */
+  score?: string;
 }
 
 /** One chapter of the diary: some writing followed by its photos. */
@@ -23,6 +25,8 @@ export interface Section {
   /** Small mono line above the title, e.g. "Day 3 · Aug 14". */
   label?: string;
   title?: string;
+  /** Activity stats e.g. "17.74 mi · 5,643 ft ↑ · 7h 53m" or array of multiple activities. */
+  stats?: string | string[];
   /** Paragraphs. */
   text: string[];
   /** `index` is the photo's position in Trip.photos (used by the lightbox). */
@@ -47,6 +51,7 @@ interface EntryMeta {
   /** e.g. "Day 3 · Aug 14" */
   label?: string;
   title?: string;
+  stats?: string | string[];
   /** One paragraph, or an array of paragraphs. */
   text?: string | string[];
   /** Base file names (no extension) shown under this entry, in order. */
@@ -69,6 +74,8 @@ export interface TripMeta {
   captions?: Record<string, string>;
   /** Alt text keyed by base file name. */
   alt?: Record<string, string>;
+  /** Curation score summary keyed by base file name (used in dev). */
+  scores?: Record<string, string>;
   /** Base file names that are never processed or published. */
   exclude?: string[];
   /**
@@ -96,14 +103,17 @@ function buildTrip(meta: TripFile): Trip {
   const excluded = new Set(meta.exclude ?? []);
   const files = ((manifest as Manifest)[meta.slug] ?? []).filter((p) => !excluded.has(p.file));
   const byFile = new Map<string, Photo>(
-    files.map((p) => [p.file, { ...p, caption: meta.captions?.[p.file], alt: meta.alt?.[p.file] }]),
+    files.map((p) => [
+      p.file,
+      { ...p, caption: meta.captions?.[p.file], alt: meta.alt?.[p.file], score: meta.scores?.[p.file] },
+    ]),
   );
 
   const photos: Photo[] = [];
-  const used = new Set<string>();
+  const seen = new Set<string>();
 
-  /** Resolves file names to photos, skipping unknown or already-used ones. */
-  const take = (names: string[]) =>
+  /** Resolves file names to photos. If allowRepeats is true, appends a new entry in diary sequence. */
+  const take = (names: string[], allowRepeats = false) =>
     names.flatMap((name) => {
       const photo = byFile.get(name);
       if (!photo) {
@@ -112,20 +122,24 @@ function buildTrip(meta: TripFile): Trip {
         }
         return [];
       }
-      if (used.has(name)) return [];
-      used.add(name);
+      if (seen.has(name) && !allowRepeats) {
+        return [];
+      }
+      seen.add(name);
+      const index = photos.length;
       photos.push(photo);
-      return [{ photo, index: photos.length - 1 }];
+      return [{ photo, index }];
     });
 
   const sections: Section[] = (meta.entries ?? []).map((entry) => ({
     label: entry.label,
     title: entry.title,
+    stats: entry.stats,
     text: entry.text === undefined ? [] : [entry.text].flat(),
-    photos: take(entry.photos),
+    photos: take(entry.photos, true),
   }));
 
-  const rest = take(files.map((p) => p.file));
+  const rest = take(files.map((p) => p.file), false);
   if (rest.length > 0) {
     sections.push({ title: sections.length > 0 ? 'More' : undefined, text: [], photos: rest });
   }

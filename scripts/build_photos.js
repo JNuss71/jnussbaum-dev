@@ -9,12 +9,14 @@
 // Usage:  pnpm build:photos [--force]
 //
 // Notes:
-//  - EXIF orientation is applied, then all metadata (including GPS) is stripped.
+//  - EXIF orientation is applied, all original metadata (including GPS) is
+//    stripped, and clean Artist/Copyright EXIF tags are written.
 //  - Images are never upscaled; small originals just get fewer sizes.
 //  - Unchanged photos are skipped unless --force is passed.
 //  - Photos listed in the trip's "exclude" array (src/data/trips/<slug>.json)
 //    are skipped, and outputs for removed/excluded photos are deleted.
 
+import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -112,6 +114,7 @@ for (const slug of slugs) {
       await sharp(input)
         .rotate()
         .resize({ width: w, withoutEnlargement: true })
+        .withExif({ IFD0: { Artist: 'Jared Nussbaum', Copyright: '© Jared Nussbaum. All rights reserved.' } })
         .webp({ quality: QUALITY })
         .toFile(output);
       encoded++;
@@ -135,3 +138,20 @@ fs.mkdirSync(path.dirname(MANIFEST), { recursive: true });
 fs.writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2) + '\n');
 
 console.log(`Done. ${encoded} encoded, ${skipped} up to date, ${removed} stale removed. Manifest: ${path.relative(projectRoot, MANIFEST)}`);
+
+// Apply TrustMark invisible pixel watermark ("jaredn.dev") + C2PA ES256 signature.
+const venvPythonWin = path.join(projectRoot, '.venv', 'Scripts', 'python.exe');
+const venvPythonPosix = path.join(projectRoot, '.venv', 'bin', 'python');
+const venvPython = fs.existsSync(venvPythonWin) ? venvPythonWin : fs.existsSync(venvPythonPosix) ? venvPythonPosix : null;
+const signScript = path.join(__dirname, 'sign_and_watermark.py');
+if (venvPython && fs.existsSync(signScript)) {
+  const res = spawnSync(venvPython, [signScript, ...(force ? ['--force'] : [])], { stdio: 'inherit' });
+  if (res.status !== 0) process.exit(res.status ?? 1);
+}
+
+// Optionally sync to Cloudflare R2 bucket if --sync is passed
+const syncScript = path.join(__dirname, 'sync_r2.py');
+if (venvPython && fs.existsSync(syncScript) && process.argv.includes('--sync')) {
+  const syncRes = spawnSync(venvPython, [syncScript], { stdio: 'inherit' });
+  if (syncRes.status !== 0) console.warn('Warning: R2 sync failed (network unreachable). Run pnpm sync:photos to retry.');
+}

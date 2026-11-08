@@ -27,6 +27,18 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  DEFAULT_MODEL,
+  GENRES,
+  ISSUES,
+  SCORE_SCHEMA,
+  SCORE_SYSTEM,
+  STRENGTHS,
+  TITLE_SCHEMA,
+  TITLE_SYSTEM,
+  gemini,
+  usageSummary,
+} from './lib/photo_critique.js';
 
 let sharp;
 try {
@@ -49,7 +61,7 @@ const option = (name) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const slug = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--model');
+const slug = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--model' && args[i - 1] !== '--limit');
 
 if (!slug) {
   console.error('Usage: pnpm curate:photos <trip-slug> [--ai] [--rewrite] [--model <id>]');
@@ -58,8 +70,8 @@ if (!slug) {
 
 const useAi = flag('--ai');
 const rewrite = flag('--rewrite');
-const MODEL = option('--model') ?? process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite';
-const API_BASE = process.env.GEMINI_BASE_URL ?? 'https://generativelanguage.googleapis.com';
+const MODEL = option('--model') ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;
+const LIMIT = Number(option('--limit')) || Infinity; // score only the first N photos (for trying a prompt)
 const API_KEY = process.env.GEMINI_API_KEY;
 
 if (useAi && !API_KEY) {
@@ -82,8 +94,9 @@ const AI_WIDTH = 1024;
 const DUP_WINDOW_MS = 90 * 1000; // shots this close together can be duplicates
 const DUP_MAX_DISTANCE = 8; // out of 64 bits of difference hash
 const SOFT_RATIO = 0.25; // sharpness below this fraction of the trip median = very soft
-const CONCURRENCY = 4;
-const PROMPT_VERSION = 1; // bump to invalidate cached AI results
+const CONCURRENCY = 8; // local sharp worker pool
+const AI_CONCURRENCY = 96; // Gemini requests in flight (~400 RPM, ~1.1M TPM on Argon)
+const PROMPT_VERSION = 3; // bump to invalidate cached AI results
 
 const safeName = (file) => path.basename(file, path.extname(file)).replace(/[^a-zA-Z0-9._-]+/g, '-');
 const pad = (n) => String(n).padStart(2, '0');
@@ -232,108 +245,55 @@ async function analyze(file) {
 }
 
 // ----------------------------------------------------------------- Gemini
-
-const SYSTEM_PROMPT =
-  'You write labels for travel photos on a personal photography site. Be literal and brief. ' +
-  'Never identify people or guess who anyone is. Do not guess place names; only name a place ' +
-  'if its name is legible in the image. Avoid hype words like stunning, breathtaking or majestic.';
-
-const ISSUES = ['blurry', 'poorly exposed', 'tilted horizon', 'cluttered', 'eyes closed', 'obstructed view'];
-
-const PHOTO_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    alt: { type: 'STRING', description: 'What is visible, for a screen-reader user. Under 125 characters.' },
-    caption: { type: 'STRING', description: 'Plain caption, 10 words or fewer.' },
-    quality: { type: 'INTEGER', description: '1 (poor) to 5 (excellent): sharpness, exposure and composition.' },
-    issues: { type: 'ARRAY', items: { type: 'STRING', enum: ISSUES } },
-  },
-  required: ['alt', 'caption', 'quality', 'issues'],
-};
-
-const TITLE_SCHEMA = {
-  type: 'OBJECT',
-  properties: { title: { type: 'STRING', description: 'Plain title, 5 words or fewer, no puns.' } },
-  required: ['title'],
-};
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function gemini(parts, schema) {
-  const body = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: 'user', parts }],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      responseSchema: schema,
-      temperature: 0.2,
-      maxOutputTokens: 2048,
-    },
-  };
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const res = await fetch(`${API_BASE}/v1beta/models/${MODEL}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': API_KEY },
-      body: JSON.stringify(body),
-    });
-
-    if (res.status === 429 || res.status >= 500) {
-      const wait = Number(res.headers.get('retry-after')) * 1000 || 2 ** attempt * 1000;
-      await sleep(wait);
-      continue;
-    }
-    if (!res.ok) {
-      const detail = (await res.text()).slice(0, 300);
-      if (res.status === 400 || res.status === 403 || res.status === 404) {
-        throw Object.assign(new Error(`Gemini API ${res.status}: ${detail}`), { fatal: true });
-      }
-      throw new Error(`Gemini API ${res.status}: ${detail}`);
-    }
-
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
-    if (!text) return null; // blocked or empty
-    try {
-      return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, ''));
-    } catch {
-      return null;
-    }
-  }
-  throw new Error('Gemini API kept returning 429/5xx; try again later.');
-}
+// Rubric, schemas and the API client live in lib/photo_critique.js (shared with rank_photos.js).
 
 const cleanStr = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
+const clampGrade = (v) => (Number.isFinite(v) ? Math.min(5, Math.max(1, Math.round(v))) : undefined);
 
 async function describePhoto(photo) {
   const jpeg = await sharp(path.join(tripSrc, photo.file), { failOn: 'none' })
     .rotate()
     .resize({ width: AI_WIDTH, withoutEnlargement: true })
-    .jpeg({ quality: 80 }) // sharp drops all metadata (EXIF, GPS) unless asked to keep it
+    .jpeg({ quality: 85 }) // sharp drops all metadata (EXIF, GPS) unless asked to keep it
     .toBuffer();
-  const out = await gemini(
-    [
-      { text: 'Label this photo.' },
+  const out = await gemini({
+    model: MODEL,
+    apiKey: API_KEY,
+    system: SCORE_SYSTEM,
+    schema: SCORE_SCHEMA,
+    parts: [
+      { text: 'Critique this photograph.' },
       { inline_data: { mime_type: 'image/jpeg', data: jpeg.toString('base64') } },
     ],
-    PHOTO_SCHEMA,
-  );
+  });
   if (!out) return null;
-  const quality = Number.isFinite(out.quality) ? Math.min(5, Math.max(1, Math.round(out.quality))) : undefined;
   const result = {
-    alt: cleanStr(out.alt, 160),
-    caption: cleanStr(out.caption, 100),
-    quality,
+    genre: GENRES.includes(out.genre) ? out.genre : undefined,
+    critique: cleanStr(out.critique, 800),
+    scores: {
+      intent: clampGrade(out.intent),
+      composition: clampGrade(out.composition),
+      light: clampGrade(out.light),
+      moment: clampGrade(out.moment),
+      craft: clampGrade(out.craft),
+    },
+    quality: clampGrade(out.quality),
     issues: Array.isArray(out.issues) ? out.issues.filter((i) => ISSUES.includes(i)) : [],
+    strengths: Array.isArray(out.strengths) ? out.strengths.filter((x) => STRENGTHS.includes(x)) : [],
+    caption: cleanStr(out.caption, 100),
+    alt: cleanStr(out.alt, 160),
   };
-  return result.alt || result.caption ? result : null;
+  return result.quality && (result.alt || result.caption) ? result : null;
 }
 
 async function suggestDayTitle(captions) {
-  const out = await gemini(
-    [{ text: `Captions of photos from one day of a trip:\n- ${captions.join('\n- ')}\n\nSuggest a title for the day.` }],
-    TITLE_SCHEMA,
-  );
+  const out = await gemini({
+    model: MODEL,
+    apiKey: API_KEY,
+    system: TITLE_SYSTEM,
+    schema: TITLE_SCHEMA,
+    parts: [{ text: `Captions of photos from one day of a trip:\n- ${captions.join('\n- ')}\n\nSuggest a title for the day.` }],
+  });
   return cleanStr(out?.title, 60);
 }
 
@@ -403,41 +363,51 @@ for (const p of photos) {
 }
 if (cluster.length > 1) clusters.push(cluster);
 
-for (const group of clusters) {
-  const best = group.reduce((a, b) => (b.sharpness > a.sharpness ? b : a));
-  for (const p of group) if (p !== best) p.drop = `near-duplicate of ${best.name}`;
-}
-for (const p of photos) {
-  if (!p.drop && median > 0 && p.sharpness < median * SOFT_RATIO) p.drop = 'very soft compared with the rest of the trip';
+// Only use non-AI pixel heuristics when running without --ai; with --ai every photo is
+// scored by the model and deduplication happens visually after ranking.
+if (!useAi) {
+  for (const group of clusters) {
+    const best = group.reduce((a, b) => (b.sharpness > a.sharpness ? b : a));
+    for (const p of group) if (p !== best) p.drop = `near-duplicate of ${best.name}`;
+  }
+  for (const p of photos) {
+    if (!p.drop && median > 0 && p.sharpness < median * SOFT_RATIO) p.drop = 'very soft compared with the rest of the trip';
+  }
 }
 
 let kept = photos.filter((p) => !p.drop);
+const aiTargets = Number.isFinite(LIMIT) ? kept.slice(0, LIMIT) : kept;
 
 // -- optional AI pass (kept photos only, cached on disk)
-let aiCalls = 0;
 const cachePath = path.join(tripSrc, '.curation-cache.json');
 const cache = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, 'utf-8')) : {};
 const dayTitles = {};
 
 if (useAi) {
-  console.log(`Asking ${MODEL} about ${kept.length} photos (cached results are reused) ...`);
+  console.log(`Asking ${MODEL} about ${aiTargets.length} photos (cached results are reused) ...`);
   const keyOf = (p) => `${p.file}|${p.size}|${p.mtimeMs}|${MODEL}|v${PROMPT_VERSION}`;
   let failed = 0;
+  let done = 0;
   try {
-    await pool(kept, CONCURRENCY, async (p) => {
+    await pool(aiTargets, AI_CONCURRENCY, async (p) => {
       const key = keyOf(p);
       if (cache[key]) {
         p.ai = cache[key];
+        done++;
         return;
       }
       try {
-        aiCalls++;
         p.ai = await describePhoto(p);
         if (p.ai) cache[key] = p.ai;
         else failed++;
       } catch (err) {
         if (err.fatal) throw err;
         failed++;
+      }
+      done++;
+      if (done % 50 === 0 || done === aiTargets.length) {
+        fs.writeFileSync(cachePath, JSON.stringify(cache));
+        console.log(`  scored ${done} / ${aiTargets.length}`);
       }
     });
 
@@ -451,7 +421,6 @@ if (useAi) {
         return;
       }
       try {
-        aiCalls++;
         const title = await suggestDayTitle(captions);
         if (title) dayTitles[day] = cache[key] = title;
       } catch (err) {
@@ -487,8 +456,14 @@ const dateText =
       ? `${MONTHS[fm - 1]} – ${MONTHS[lm - 1]} ${fy}`
       : `${MONTHS[fm - 1]} ${fy} – ${MONTHS[lm - 1]} ${ly}`;
 
-// -- best candidate for the cover: highest AI rating, then sharpest
-const cover = [...kept].sort((a, b) => (b.ai?.quality ?? 0) - (a.ai?.quality ?? 0) || b.sharpness - a.sharpness)[0];
+// -- best candidate for the cover: highest AI rating, then criterion grades, then sharpest
+const criterionSum = (p) => Object.values(p.ai?.scores ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+const cover = [...kept].sort(
+  (a, b) =>
+    (b.ai?.quality ?? 0) - (a.ai?.quality ?? 0) ||
+    criterionSum(b) - criterionSum(a) ||
+    b.sharpness - a.sharpness,
+)[0];
 
 const draft = {
   title: slug.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -516,7 +491,7 @@ const report = {
   generatedAt: new Date().toISOString(),
   model: useAi ? MODEL : null,
   medianSharpness: median,
-  photos: photos.map(({ hash, size, mtimeMs, ...rest }) => ({ ...rest, hash: hash.toString(16) })),
+  photos: photos.map(({ hash, _size, _mtimeMs, ...rest }) => ({ ...rest, hash: hash.toString(16) })),
 };
 fs.writeFileSync(path.join(tripSrc, 'curation.json'), JSON.stringify(report, null, 2) + '\n');
 
@@ -551,11 +526,20 @@ if (allMtime) {
 } else if (noExif) {
   console.log(`\n${noExif} photos had no EXIF capture time and were placed next to the previous photo by file name. Check their days.`);
 }
+const heroes = kept.filter((p) => p.ai?.quality === 5);
+if (heroes.length) {
+  console.log(`\nTop gallery shots (${heroes.length} photo(s) rated 5/5):`);
+  for (const p of heroes) {
+    const s = p.ai?.strengths?.length ? ` [${p.ai.strengths.join(', ')}]` : '';
+    console.log(`  ${p.name}: ${p.ai?.caption ?? ''}${s}`);
+  }
+}
+
 const lowRated = kept.filter((p) => p.ai?.quality && p.ai.quality <= 2);
 if (lowRated.length) {
   console.log(`\nThe AI rated ${lowRated.length} kept photos 1-2 out of 5 (not excluded; worth a look): ${lowRated.map((p) => p.name).join(', ')}`);
 }
-if (useAi) console.log(`\n${aiCalls} Gemini requests made this run.`);
+if (useAi) console.log(`\n${usageSummary()}`);
 
 console.log(
   wroteTrip

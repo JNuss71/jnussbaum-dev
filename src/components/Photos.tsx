@@ -72,40 +72,95 @@ const TripIndex: React.FC = () => {
   );
 };
 
-/** Masonry via CSS columns; aspect-ratio on each tile reserves space so nothing jumps while loading. */
+/** Responsive column count matching Tailwind's default `sm` (640px) and `lg` (1024px) breakpoints. */
+function useColumnCount(): number {
+  const getCount = () => {
+    if (typeof window === 'undefined') return 3;
+    if (window.matchMedia('(min-width: 1024px)').matches) return 3;
+    if (window.matchMedia('(min-width: 640px)').matches) return 2;
+    return 1;
+  };
+  const [cols, setCols] = useState<number>(getCount);
+
+  useEffect(() => {
+    const lg = window.matchMedia('(min-width: 1024px)');
+    const sm = window.matchMedia('(min-width: 640px)');
+    const update = () => setCols(getCount());
+    lg.addEventListener('change', update);
+    sm.addEventListener('change', update);
+    return () => {
+      lg.removeEventListener('change', update);
+      sm.removeEventListener('change', update);
+    };
+  }, []);
+
+  return cols;
+}
+
+/**
+ * Left-to-right chronological masonry: places each photo into the shortest column
+ * (breaking ties left-to-right) so reading order flows across and down while keeping
+ * columns balanced.
+ */
 const PhotoGrid: React.FC<{
   trip: Trip;
   items: Section['photos'];
   onOpen: (index: number) => void;
-}> = ({ trip, items, onOpen }) => (
-  <div className="columns-1 sm:columns-2 lg:columns-3 gap-3">
-    {items.map(({ photo, index }) => (
-      <button
-        key={photo.file}
-        onClick={() => onOpen(index)}
-        aria-label={`Open photo ${index + 1} of ${trip.photos.length}`}
-        className="block w-full mb-3 overflow-hidden rounded bg-zinc-900 break-inside-avoid cursor-zoom-in hover:opacity-90 transition-opacity"
-        style={{ aspectRatio: `${photo.width} / ${photo.height}` }}
-      >
-        <img
-          src={photoFallback(trip, photo)}
-          srcSet={photoSrcSet(trip, photo)}
-          sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-          width={photo.width}
-          height={photo.height}
-          alt={photoAlt(trip, photo, index)}
-          loading={index < 3 ? 'eager' : 'lazy'}
-          decoding="async"
-          className="w-full h-full object-cover"
-        />
-      </button>
-    ))}
-  </div>
-);
+  cols: number;
+}> = ({ trip, items, onOpen, cols }) => {
+  const colCount = Math.max(1, cols);
+  const columns: Section['photos'][] = Array.from({ length: colCount }, () => []);
+  const heights = new Array<number>(colCount).fill(0);
+
+  for (const item of items) {
+    let targetCol = 0;
+    for (let c = 1; c < colCount; c++) {
+      if (heights[c] < heights[targetCol] - 0.01) {
+        targetCol = c;
+      }
+    }
+    columns[targetCol].push(item);
+    heights[targetCol] += item.photo.height / item.photo.width + 0.04;
+  }
+
+  return (
+    <div
+      className="grid gap-3 items-start"
+      style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}
+    >
+      {columns.map((colItems, colIdx) => (
+        <div key={colIdx} className="flex flex-col gap-3">
+          {colItems.map(({ photo, index }) => (
+            <button
+              key={`${photo.file}-${index}`}
+              onClick={() => onOpen(index)}
+              aria-label={`Open photo ${index + 1} of ${trip.photos.length}`}
+              className="relative block w-full overflow-hidden rounded bg-zinc-900 cursor-zoom-in hover:opacity-90 transition-opacity"
+              style={{ aspectRatio: `${photo.width} / ${photo.height}` }}
+            >
+              <img
+                src={photoFallback(trip, photo)}
+                srcSet={photoSrcSet(trip, photo)}
+                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                width={photo.width}
+                height={photo.height}
+                alt={photoAlt(trip, photo, index)}
+                loading={index < 3 ? 'eager' : 'lazy'}
+                decoding="async"
+                className="w-full h-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 const TripView: React.FC<{ trip: Trip }> = ({ trip }) => {
   usePageMeta(`${trip.title} | Photos | Jared Nussbaum`, `/photos/${trip.slug}`);
   const [open, setOpen] = useState<number | null>(null);
+  const cols = useColumnCount();
 
   return (
     <div className="space-y-8">
@@ -136,6 +191,15 @@ const TripView: React.FC<{ trip: Trip }> = ({ trip }) => {
                   <p className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider">{section.label}</p>
                 )}
                 {section.title && <h2 className="text-lg font-semibold text-zinc-100">{section.title}</h2>}
+                {section.stats && (
+                  <div className="space-y-0.5">
+                    {(Array.isArray(section.stats) ? section.stats : [section.stats]).map((s, idx) => (
+                      <p key={idx} className="text-xs font-mono text-emerald-400/90 font-medium">
+                        {s}
+                      </p>
+                    ))}
+                  </div>
+                )}
                 {section.text.map((paragraph, p) => (
                   <p key={p} className="text-sm text-zinc-400 leading-relaxed max-w-2xl">
                     {paragraph}
@@ -143,7 +207,9 @@ const TripView: React.FC<{ trip: Trip }> = ({ trip }) => {
                 ))}
               </div>
             )}
-            <PhotoGrid trip={trip} items={section.photos} onOpen={setOpen} />
+            {section.photos.length > 0 && (
+              <PhotoGrid trip={trip} items={section.photos} onOpen={setOpen} cols={cols} />
+            )}
           </section>
         ))}
       </div>
