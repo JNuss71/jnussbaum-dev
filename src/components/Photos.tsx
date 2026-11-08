@@ -54,6 +54,8 @@ const TripIndex: React.FC = () => {
 
   return (
     <div className="space-y-8">
+      <title>Photos | Jared Nussbaum</title>
+      <link rel="canonical" href={`${SITE}/photos`} />
       <div className="space-y-2">
         <div className="text-xs font-mono uppercase tracking-widest text-zinc-500">Photos</div>
         <p className="text-sm text-zinc-400 leading-relaxed max-w-2xl">Travel photography.</p>
@@ -134,17 +136,17 @@ const PhotoGrid: React.FC<{
             <button
               key={`${photo.file}-${index}`}
               onClick={() => onOpen(index)}
-              aria-label={`Open photo ${index + 1} of ${trip.photos.length}`}
+              aria-label={`${photoAlt(trip, photo, index)} (Open photo ${index + 1} of ${trip.photos.length})`}
               className="relative block w-full overflow-hidden rounded bg-zinc-900 cursor-zoom-in hover:opacity-90 transition-opacity"
               style={{ aspectRatio: `${photo.width} / ${photo.height}` }}
             >
               <img
                 src={photoFallback(trip, photo)}
                 srcSet={photoSrcSet(trip, photo)}
-                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                sizes="(min-width: 1152px) 360px, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                 width={photo.width}
                 height={photo.height}
-                alt={photoAlt(trip, photo, index)}
+                alt=""
                 loading={index < 3 ? 'eager' : 'lazy'}
                 decoding="async"
                 className="w-full h-full object-cover"
@@ -164,6 +166,9 @@ const TripView: React.FC<{ trip: Trip }> = ({ trip }) => {
 
   return (
     <div className="space-y-8">
+      <title>{`${trip.title} | Photos | Jared Nussbaum`}</title>
+      <link rel="canonical" href={`${SITE}/photos/${trip.slug}`} />
+      {trip.blurb && <meta name="description" content={trip.blurb} />}
       <div className="space-y-3">
         <a
           href="/photos"

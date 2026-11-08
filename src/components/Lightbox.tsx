@@ -32,24 +32,49 @@ export const Lightbox: React.FC<LightboxProps> = ({ trip, index, onIndexChange, 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, prev, next]);
 
-  // Lock page scroll and restore focus to whatever opened the lightbox.
+  // Lock page scroll, trap focus, and restore focus to opener.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     dialogRef.current?.focus();
+
+    const handleTab = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [tabindex="0"]'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', handleTab);
+
     return () => {
       document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleTab);
       opener?.focus?.();
     };
   }, []);
+
+  // Responsive sizes based on aspect ratio (avoids massive fetches for vertical portraits).
+  const ar = photo.width / photo.height;
+  const responsiveSizes = ar < 1 ? `min(100vw, ${Math.ceil(ar * 85)}vh)` : '100vw';
 
   // Warm the cache for the neighbours.
   useEffect(() => {
     for (const offset of [-1, 1]) {
       const neighbour = trip.photos[(index + offset + total) % total];
       const img = new Image();
-      img.sizes = '100vw';
+      const nar = neighbour.width / neighbour.height;
+      img.sizes = nar < 1 ? `min(100vw, ${Math.ceil(nar * 85)}vh)` : '100vw';
       img.srcset = photoSrcSet(trip, neighbour);
       img.src = photoFallback(trip, neighbour);
     }
@@ -107,7 +132,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ trip, index, onIndexChange, 
           key={photo.file}
           src={photoFallback(trip, photo)}
           srcSet={photoSrcSet(trip, photo)}
-          sizes="100vw"
+          sizes={responsiveSizes}
           width={photo.width}
           height={photo.height}
           alt={photoAlt(trip, photo, index)}

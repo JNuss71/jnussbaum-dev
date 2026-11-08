@@ -5,6 +5,7 @@ parallel uploads, correct WebP Content-Type, and immutable cache headers.
 """
 
 import concurrent.futures
+import hashlib
 import mimetypes
 import os
 import pathlib
@@ -29,9 +30,16 @@ def load_env():
     return env
 
 local_env = load_env()
-ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID") or local_env.get("R2_ACCOUNT_ID") or "5ab35b10ee295d15d921d6413408f47e"
-ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID") or local_env.get("R2_ACCESS_KEY_ID") or "d48eb0617209ceb23c5582a89e3df20e"
-SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY") or local_env.get("R2_SECRET_ACCESS_KEY") or "53645b5e9b6717dfa1b647d46b920f9d1738157cdd934e1960a1ff5505fad0a0"
+
+def require_env(key: str) -> str:
+    val = os.environ.get(key) or local_env.get(key)
+    if not val:
+        sys.exit(f"Error: Missing required environment variable {key}. Set it in your environment or .env.local")
+    return val
+
+ACCOUNT_ID = require_env("R2_ACCOUNT_ID")
+ACCESS_KEY_ID = require_env("R2_ACCESS_KEY_ID")
+SECRET_ACCESS_KEY = require_env("R2_SECRET_ACCESS_KEY")
 BUCKET_NAME = os.environ.get("R2_BUCKET_NAME") or local_env.get("R2_BUCKET_NAME") or "jaredn-photos"
 ENDPOINT_URL = f"https://{ACCOUNT_ID}.r2.cloudflarestorage.com"
 
@@ -55,30 +63,47 @@ def main():
     paginator = s3.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=BUCKET_NAME):
         for obj in page.get("Contents", []):
-            remote_objects[obj["Key"]] = obj["Size"]
+            remote_objects[obj["Key"]] = obj.get("ETag", "").strip('"')
 
     local_files = []
+    local_keys = set()
     for slug_dir in sorted(PHOTOS_DIR.iterdir()):
         if not slug_dir.is_dir():
             continue
         for f in sorted(slug_dir.glob("*.webp")):
             rel_key = f"{slug_dir.name}/{f.name}"
             local_files.append((f, rel_key))
+            local_keys.add(rel_key)
+
+    def file_md5(path):
+        h = hashlib.md5()
+        with open(path, "rb") as fp:
+            for chunk in iter(lambda: fp.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
 
     to_upload = []
     for f, rel_key in local_files:
-        size = f.stat().st_size
-        if rel_key not in remote_objects or remote_objects[rel_key] != size:
-            to_upload.append((f, rel_key, size))
+        if rel_key not in remote_objects or remote_objects[rel_key] != file_md5(f):
+            to_upload.append((f, rel_key))
 
-    print(f"Found {len(local_files)} local photos across trips. {len(remote_objects)} already in R2. {len(to_upload)} to upload.")
+    # Identify and delete remote files that were deleted or excluded locally
+    stale_keys = [k for k in remote_objects if k not in local_keys]
+    if stale_keys:
+        print(f"Pruning {len(stale_keys)} stale photos from R2 bucket...")
+        for i in range(0, len(stale_keys), 1000):
+            batch = [{"Key": k} for k in stale_keys[i : i + 1000]]
+            s3.delete_objects(Bucket=BUCKET_NAME, Delete={"Objects": batch})
+        print(f"Successfully pruned {len(stale_keys)} stale objects.")
+
+    print(f"Found {len(local_files)} local photos across trips. {len(remote_objects)} in R2. {len(to_upload)} to upload.")
 
     if not to_upload:
         print("All photos are up to date on R2!")
         return
 
     def upload_one(item):
-        file_path, key, size = item
+        file_path, key = item
         s3.upload_file(
             str(file_path),
             BUCKET_NAME,

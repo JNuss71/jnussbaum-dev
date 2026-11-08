@@ -25,6 +25,7 @@ function App() {
         </main>
       ) : (
         <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6">
+          <link rel="canonical" href="https://jaredn.dev" />
           <Hero />
           <Projects />
           <Experience />

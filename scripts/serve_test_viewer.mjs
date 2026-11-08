@@ -32,7 +32,7 @@ try {
 } catch (e) {
   console.warn('[Viewer] Note: photo_critique.js not loaded:', e.message);
 }
-const apiKey = process.env.GEMINI_API_KEY || 'AIzaSyAmOQeWLgWSJXINOfZLdRS4e72W4SXumEI';
+const apiKey = process.env.GEMINI_API_KEY || null;
 
 // Load and index curation data
 function loadCuration() {
