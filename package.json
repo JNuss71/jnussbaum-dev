@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "build:resume": "node scripts/build_resume.js",
     "build:photos": "node scripts/build_photos.js",
-    "sync:photos": "node -e 'const { spawnSync } = require(\"child_process\"); const p = process.platform === \"win32\" ? \".venv/Scripts/python.exe\" : \".venv/bin/python\"; spawnSync(p, [\"scripts/sync_r2.py\"], { stdio: \"inherit\" });'",
+    "sync:photos": "node scripts/sync_r2_runner.mjs",
     "test:viewer": "node scripts/serve_test_viewer.mjs",
     "curate:photos": "node scripts/curate_photos.js",
     "rank:photos": "node scripts/rank_photos.js",
