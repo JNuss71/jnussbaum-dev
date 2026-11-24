@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { coverOf, photoAlt, photoFallback, photoSrcSet, trips } from '../data/trips';
 import type { Section, Trip } from '../data/trips';
 import { ArrowLeftIcon } from './Icons';
@@ -135,6 +135,7 @@ const PhotoGrid: React.FC<{
           {colItems.map(({ photo, index }) => (
             <button
               key={`${photo.file}-${index}`}
+              id={`photo-${index}`}
               onClick={() => onOpen(index)}
               aria-label={`${photoAlt(trip, photo, index)} (Open photo ${index + 1} of ${trip.photos.length})`}
               className="relative block w-full overflow-hidden rounded bg-zinc-900 cursor-zoom-in hover:opacity-90 transition-opacity"
@@ -163,6 +164,77 @@ const TripView: React.FC<{ trip: Trip }> = ({ trip }) => {
   usePageMeta(`${trip.title} | Photos | Jared Nussbaum`, `/photos/${trip.slug}`);
   const [open, setOpen] = useState<number | null>(null);
   const cols = useColumnCount();
+  const historyPushedRef = useRef(false);
+  const lastViewedIndexRef = useRef<number | null>(null);
+  const prevScrollRestorationRef = useRef<ScrollRestoration>('auto');
+
+  const restoreScrollToPhoto = useCallback((targetIdx: number | null) => {
+    requestAnimationFrame(() => {
+      if (targetIdx !== null) {
+        const target = document.getElementById(`photo-${targetIdx}`);
+        if (target) {
+          target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+          target.focus({ preventScroll: true });
+        }
+      }
+      if ('scrollRestoration' in window.history) {
+        window.history.scrollRestoration = prevScrollRestorationRef.current;
+      }
+    });
+  }, []);
+
+  const handleOpen = useCallback((index: number) => {
+    lastViewedIndexRef.current = index;
+    setOpen(index);
+    if ('scrollRestoration' in window.history) {
+      prevScrollRestorationRef.current = window.history.scrollRestoration;
+      window.history.scrollRestoration = 'manual';
+    }
+    window.history.pushState({ lightbox: true, index }, '', window.location.href);
+    historyPushedRef.current = true;
+  }, []);
+
+  const handleIndexChange = useCallback((newIndex: number) => {
+    lastViewedIndexRef.current = newIndex;
+    setOpen(newIndex);
+    if (historyPushedRef.current) {
+      window.history.replaceState({ lightbox: true, index: newIndex }, '', window.location.href);
+    }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    const closingIdx = lastViewedIndexRef.current;
+    setOpen(null);
+    if (historyPushedRef.current) {
+      historyPushedRef.current = false;
+      window.history.back();
+    } else {
+      restoreScrollToPhoto(closingIdx);
+    }
+  }, [restoreScrollToPhoto]);
+
+  // Close lightbox on browser back button and preserve scroll position
+  useEffect(() => {
+    const onPopState = () => {
+      const closingIdx = lastViewedIndexRef.current;
+      if (open !== null) {
+        historyPushedRef.current = false;
+        setOpen(null);
+      }
+      restoreScrollToPhoto(closingIdx);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [open, restoreScrollToPhoto]);
+
+  // Keep the background page scrolled to the active photo as the user proceeds
+  useEffect(() => {
+    if (open === null) return;
+    const target = document.getElementById(`photo-${open}`);
+    if (target) {
+      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+    }
+  }, [open]);
 
   return (
     <div className="space-y-8">
@@ -213,14 +285,19 @@ const TripView: React.FC<{ trip: Trip }> = ({ trip }) => {
               </div>
             )}
             {section.photos.length > 0 && (
-              <PhotoGrid trip={trip} items={section.photos} onOpen={setOpen} cols={cols} />
+              <PhotoGrid trip={trip} items={section.photos} onOpen={handleOpen} cols={cols} />
             )}
           </section>
         ))}
       </div>
 
       {open !== null && (
-        <Lightbox trip={trip} index={open} onIndexChange={setOpen} onClose={() => setOpen(null)} />
+        <Lightbox
+          trip={trip}
+          index={open}
+          onIndexChange={handleIndexChange}
+          onClose={handleClose}
+        />
       )}
     </div>
   );
