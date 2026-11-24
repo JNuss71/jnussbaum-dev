@@ -38,6 +38,9 @@ export const Lightbox: React.FC<LightboxProps> = ({ trip, index, onIndexChange, 
   const swipeStartX = useRef<number | null>(null);
   const isPinching = useRef<boolean>(false);
   const isPanning = useRef<boolean>(false);
+  const isMouseDragging = useRef<boolean>(false);
+  const mouseStartPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const mouseStartTranslate = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef(scale);
 
@@ -156,15 +159,57 @@ export const Lightbox: React.FC<LightboxProps> = ({ trip, index, onIndexChange, 
     }
   }, [trip, index, total]);
 
-  const handleDoubleTap = useCallback(() => {
-    if (scale > 1) {
-      setScale(1);
-      setTranslate({ x: 0, y: 0 });
-    } else {
-      setScale(2.5);
-      setTranslate({ x: 0, y: 0 });
+  const handleDoubleTap = useCallback(
+    (clientX?: number, clientY?: number) => {
+      if (scale > 1) {
+        setScale(1);
+        setTranslate({ x: 0, y: 0 });
+      } else {
+        const targetScale = window.innerWidth >= 768 ? 1.65 : 2.2;
+        if (clientX !== undefined && clientY !== undefined) {
+          const ox = clientX - window.innerWidth / 2;
+          const oy = clientY - window.innerHeight / 2;
+          const maxBoundX = (window.innerWidth * (targetScale - 1)) / 2;
+          const maxBoundY = (window.innerHeight * (targetScale - 1)) / 2;
+          const tx = Math.min(Math.max(-ox * (targetScale - 1), -maxBoundX), maxBoundX);
+          const ty = Math.min(Math.max(-oy * (targetScale - 1), -maxBoundY), maxBoundY);
+          setScale(targetScale);
+          setTranslate({ x: tx, y: ty });
+        } else {
+          setScale(targetScale);
+          setTranslate({ x: 0, y: 0 });
+        }
+      }
+    },
+    [scale]
+  );
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    if (scale > 1 && e.button === 0) {
+      isMouseDragging.current = true;
+      mouseStartPos.current = { x: e.clientX, y: e.clientY };
+      mouseStartTranslate.current = { ...translate };
+      setIsGesturing(true);
     }
-  }, [scale]);
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!isMouseDragging.current || scale <= 1) return;
+    const dx = e.clientX - mouseStartPos.current.x;
+    const dy = e.clientY - mouseStartPos.current.y;
+    const maxBoundX = (window.innerWidth * (scale - 1)) / 2;
+    const maxBoundY = (window.innerHeight * (scale - 1)) / 2;
+    const nextX = Math.min(Math.max(mouseStartTranslate.current.x + dx, -maxBoundX), maxBoundX);
+    const nextY = Math.min(Math.max(mouseStartTranslate.current.y + dy, -maxBoundY), maxBoundY);
+    setTranslate({ x: nextX, y: nextY });
+  };
+
+  const onMouseUp = () => {
+    if (isMouseDragging.current) {
+      isMouseDragging.current = false;
+      setIsGesturing(false);
+    }
+  };
 
   const onTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
@@ -277,7 +322,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ trip, index, onIndexChange, 
       const distDiff = Math.hypot(touch.clientX - lastTap.current.x, touch.clientY - lastTap.current.y);
 
       if (timeDiff < 300 && distDiff < 30) {
-        handleDoubleTap();
+        handleDoubleTap(touch.clientX, touch.clientY);
         lastTap.current = { time: 0, x: 0, y: 0 };
         swipeStartX.current = null;
         return;
@@ -348,12 +393,16 @@ export const Lightbox: React.FC<LightboxProps> = ({ trip, index, onIndexChange, 
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
         onClick={(e) => {
           if (e.target === e.currentTarget && scale === 1) onClose();
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          handleDoubleTap();
+          handleDoubleTap(e.clientX, e.clientY);
         }}
       >
         {scale === 1 && (
@@ -378,7 +427,7 @@ export const Lightbox: React.FC<LightboxProps> = ({ trip, index, onIndexChange, 
           style={{
             transform: `translate3d(${translate.x}px, ${translate.y}px, 0) scale(${scale})`,
             transition: isGesturing ? 'none' : 'transform 200ms cubic-bezier(0.2, 0, 0, 1)',
-            cursor: scale > 1 ? 'grab' : 'zoom-in',
+            cursor: scale > 1 ? (isGesturing ? 'grabbing' : 'grab') : 'zoom-in',
           }}
           draggable={false}
         />
